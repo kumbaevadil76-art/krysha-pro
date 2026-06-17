@@ -384,33 +384,46 @@ async function saveListingToFirebase(listing, editId = null) {
     
     try {
         if (editId) {
-            // Обновление
-            await db.collection("listings").doc(editId).update({
+            // Обновление — Firebase использует doc ID
+            await db.collection("listings").doc(String(editId)).update({
                 ...listing,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             });
+            // Обновляем локально
+            const localItem = items.find(i => i.id == editId || i.id === editId);
+            if (localItem) {
+                Object.assign(localItem, listing, { updatedAt: new Date().toISOString() });
+            }
             showToast("Объявление обновлено!", "success");
         } else {
-            // Создание
-            await db.collection("listings").add({
+            // Создание — без ID, Firestore сгенерирует сам
+            const docRef = await db.collection("listings").add({
                 ...listing,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                 views: 0,
-                vip: false,
+                isVIP: false,
                 vipUntil: null
             });
+            // Обновляем локально с новым ID
+            const newItem = { id: docRef.id, ...listing, createdAt: new Date().toISOString(), views: 0 };
+            const idx = items.findIndex(i => !i.id);
+            if (idx >= 0) {
+                items[idx] = newItem;
+            } else {
+                items.unshift(newItem);
+            }
             showToast("Объявление опубликовано!", "success");
         }
         
         closeModal('addFormModal');
-        // Не нужно вручную обновлять — real-time синхронизация сделает это
+        render();
     } catch (error) {
         console.error("Ошибка сохранения:", error);
         showToast("Ошибка при сохранении", "error");
     }
 }
-
+    
 // Удаление объявления
 async function deleteListingFromFirebase(id) {
     if (!db) return false;
@@ -1947,38 +1960,70 @@ async function makeListingVIP(id) {
     const item = items.find(i => i.id === id);
     if (!item) return;
     
-    item.isVIP = true;
-    item.vipUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 дней
+    const vipUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     
-    await saveListingToFirebase(item, id);
-    showToast("✅ Объявление стало VIP на 7 дней!", "success");
-    render();
+    try {
+        await db.collection("listings").doc(String(id)).update({
+            isVIP: true,
+            vipUntil: vipUntil,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        // Обновляем локально
+        const localItem = items.find(i => i.id === id);
+        if (localItem) {
+            localItem.isVIP = true;
+            localItem.vipUntil = vipUntil;
+        }
+        showToast("✅ Объявление стало VIP на 7 дней!", "success");
+        render();
+    } catch (error) {
+        console.error("Ошибка VIP:", error);
+        showToast("Ошибка при активации VIP", "error");
+    }
 }
-
+    
 async function removeListingVIP(id) {
     const item = items.find(i => i.id === id);
     if (!item) return;
     
-    item.isVIP = false;
-    item.vipUntil = null;
-    
-    await saveListingToFirebase(item, id);
-    showToast("✅ VIP статус снят", "success");
-    render();
+    try {
+        await db.collection("listings").doc(String(id)).update({
+            isVIP: false,
+            vipUntil: null,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        // Обновляем локально
+        const localItem = items.find(i => i.id === id);
+        if (localItem) {
+            localItem.isVIP = false;
+            localItem.vipUntil = null;
+        }
+        showToast("✅ VIP статус снят", "success");
+        render();
+    } catch (error) {
+        console.error("Ошибка снятия VIP:", error);
+        showToast("Ошибка при снятии VIP", "error");
+    }
 }
-
+    
 // Проверка и очистка просроченных VIP
 async function checkVIPExpiry() {
     const now = new Date();
-    let changed = false;
     
-    items.forEach(item => {
+    for (const item of items) {
         if (item.isVIP && item.vipUntil && new Date(item.vipUntil) < now) {
             item.isVIP = false;
             item.vipUntil = null;
-            changed = true;
+            try {
+                await db.collection("listings").doc(String(item.id)).update({
+                    isVIP: false,
+                    vipUntil: null
+                });
+            } catch (e) {
+                console.error("Ошибка обновления VIP:", e);
+            }
         }
-    });
+    }
 }
 
 // ====================== KRY SHA PLUS ======================
@@ -2223,8 +2268,8 @@ function openAddModal() {
 }
 
 function openEditModal(id) {
-    const item = items.find(i => i.id === id);
-    if (!item) return;
+    const item = items.find(i => i.id == id || i.id === id);
+    if (!item) return showToast("Объявление не найдено", "error");
 
     document.getElementById('modalFormTitle').innerText = "Редактировать объявление";
     document.getElementById('editItemId').value = item.id;
@@ -2315,7 +2360,7 @@ async function saveListing() {
     };
 
     // Сохраняем в Firebase
-    await saveListingToFirebase(listing, editId);
+    await saveListingToFirebase(listing, editId || null);
     
     // Логирование
     logAction(editId ? 'update_listing' : 'create_listing', `ID: ${editId || 'new'}, Title: ${listing.title}`);
@@ -2463,7 +2508,7 @@ function toggleFav(id) {
     localStorage.setItem('krysha_u_favs', JSON.stringify(favorites));
     render();
 }
-
+    
 let currentSlideIndex = 0;
 
 function openDetail(id) {
@@ -2501,6 +2546,8 @@ function openDetail(id) {
         `
         : '<p style="color:#64748b; text-align:center; padding:60px 20px; background:#f8fafc; border-radius:16px;">📷 Нет фотографий</p>';
 
+    const isOwner = currentUser && (item.author === currentUser || currentUser === 'admin');
+    
     const html = `
         ${imagesHtml}
         <h2 style="margin-bottom:12px;">${item.title}</h2>
@@ -2521,7 +2568,7 @@ function openDetail(id) {
             <h3 style="margin-bottom: 15px;">📍 Местоположение</h3>
             <div id="detailMap" style="width:100%; height:380px; border-radius:16px; border:1px solid #334155;"></div>
         </div>
-
+        
         <div style="display:flex; gap:12px; margin:35px 0 20px;">
             <button onclick="openChatModal(${item.id}, '${item.author}')" class="btn-secondary" style="flex:1; padding:16px; font-size:15px;">
                 💬 Написать продавцу
@@ -2547,10 +2594,10 @@ function openDetail(id) {
         
         <div style="display:flex; gap:10px; margin-top:15px; flex-wrap:wrap;">
             ${isOwner ? `
-            <button onclick="event.stopPropagation(); openEditModal(${item.id});" class="btn-secondary" style="flex:1; padding:16px; font-size:15px; background:#f59e0b; color:#000;">
+            <button onclick="event.stopPropagation(); openEditModal('${item.id}');" class="btn-secondary" style="flex:1; padding:16px; font-size:15px; background:#f59e0b; color:#000;">
                 ✏️ Редактировать
             </button>
-            <button onclick="event.stopPropagation(); if(confirm('Удалить объявление?')) { deleteListing(${item.id}); closeModal('detailModal'); }" class="btn-danger" style="flex:1; padding:16px; font-size:15px;">
+            <button onclick="event.stopPropagation(); confirmAndDeleteListing('${item.id}');" class="btn-danger" style="flex:1; padding:16px; font-size:15px;">
                 🗑 Удалить
             </button>` : ''}
             <a href="https://wa.me/${WA_PHONE}?text=${waText}" target="_blank" class="btn-whatsapp" style="flex:1; min-width:120px;">
@@ -2612,13 +2659,18 @@ function updateSlide(images) {
     }
 }
 
+function confirmAndDeleteListing(id) {
+    if (confirm("Удалить объявление?")) {
+        deleteListing(id);
+        closeModal('detailModal');
+    }
+}
+
 async function deleteListing(id) {
     const item = items.find(i => i.id === id);
     if (!item || (item.author !== currentUser && currentUser !== 'admin')) return;
     
-    if (confirm("Удалить объявление?")) {
-        await deleteListingFromFirebase(id);
-    }
+    await deleteListingFromFirebase(id);
 }
 
 function setMode(mode) {
