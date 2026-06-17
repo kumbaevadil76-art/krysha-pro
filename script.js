@@ -91,7 +91,7 @@ function showAllListingsOnMap() {
                         <h4 style="margin:0 0 8px; color:#1e2937; font-size:14px;">${sanitizeHTML(item.title)}</h4>
                         <p style="margin:0; color:#6366f1; font-weight:600; font-size:16px;">${item.price.toLocaleString()} ₸</p>
                         <p style="margin:5px 0 0; color:#64748b; font-size:12px;">${item.city} • ${item.category}</p>
-                        <button onclick="openDetail(${item.id}); closeModal('adminModal');" 
+                        <button onclick="openDetail('${item.id}'); closeModal('adminModal');" 
                                 style="margin-top:8px; padding:6px 12px; background:#6366f1; color:white; border:none; border-radius:6px; cursor:pointer; font-size:12px;">
                             Смотреть объявление
                         </button>
@@ -1914,8 +1914,8 @@ function showAdminAllListings() {
                     <p>${item.city} | ${currentLang === 'ru' ? 'Автор' : currentLang === 'kk' ? 'Авторы' : 'Author'}: <strong>${item.author}</strong></p>
                 </div>
                 <div style="padding:12px; display:flex; gap:8px;">
-                    <button onclick="adminEditListing(${item.id});" class="btn-secondary" style="flex:1;">${editBtn}</button>
-                    <button onclick="adminDeleteListing(${item.id}, '${confirmDelete}', '${deletedMsg}');" class="btn-danger" style="flex:1;">${deleteBtn}</button>
+                    <button onclick="adminEditListing('${item.id}');" class="btn-secondary" style="flex:1;">${editBtn}</button>
+                    <button onclick="adminDeleteListing('${item.id}', '${confirmDelete}', '${deletedMsg}');" class="btn-danger" style="flex:1;">${deleteBtn}</button>
                 </div>
             </div>`;
     });
@@ -2570,10 +2570,10 @@ function openDetail(id) {
         </div>
         
         <div style="display:flex; gap:12px; margin:35px 0 20px;">
-            <button onclick="openChatModal(${item.id}, '${item.author}')" class="btn-secondary" style="flex:1; padding:16px; font-size:15px;">
+            <button onclick="openChatModal('${item.id}', '${item.author}')" class="btn-secondary" style="flex:1; padding:16px; font-size:15px;">
                 💬 Написать продавцу
             </button>
-            <button onclick="shareListing(${item.id})" class="btn-secondary" style="flex:1; padding:16px; font-size:15px;">
+            <button onclick="shareListing('${item.id}')" class="btn-secondary" style="flex:1; padding:16px; font-size:15px;">
                 📤 Поделиться
             </button>
             <button onclick="openMortgageModal(${item.price})" class="btn-secondary" style="flex:1; padding:16px; font-size:15px;">
@@ -2776,7 +2776,7 @@ function renderMySubscriptions() {
                 ${sub.type === 'all' ? 'Любой тип' : sub.type} | 
                 ${sub.category === 'all' ? 'Любая категория' : sub.category}<br>
                 Цена: ${sub.priceFrom || 0} — ${sub.priceTo === Infinity ? '∞' : sub.priceTo} ₸
-                <button onclick="deleteSubscription(${sub.id})" style="float:right; color:#ef4444; background:none; border:none; font-size:14px; cursor:pointer;">Удалить</button>
+                <button onclick="deleteSubscription('${sub.id}')" style="float:right; color:#ef4444; background:none; border:none; font-size:14px; cursor:pointer;">Удалить</button>
             </div>`;
     });
     container.innerHTML = html;
@@ -2862,12 +2862,12 @@ function createCardHTML(item, dateStr = '') {
     const hasChat = currentUser && currentUser !== item.author;
     
     return `
-        <div class="card ${isVIP ? 'vip-card' : ''}" onclick="openDetail(${item.id})">
+        <div class="card ${isVIP ? 'vip-card' : ''}" onclick="openDetail('${item.id}')">
             ${isVIP ? '<div class="vip-badge">⭐ VIP</div>' : ''}
             <img src="${item.images[0]}" alt="${item.title}">
             <div class="category-tag">${item.category} • ${typeLabel}</div>
             <button class="fav-btn ${favorites.includes(item.id) ? 'active' : ''}" 
-                    onclick="event.stopPropagation(); toggleFav(${item.id})">❤️</button>
+                    onclick="event.stopPropagation(); toggleFav('${item.id}')">❤️</button>
             <div class="card-body">
                 <div class="card-price">${item.price.toLocaleString()} ₸</div>
                 <h3>${item.title}</h3>
@@ -2878,14 +2878,14 @@ function createCardHTML(item, dateStr = '') {
             ${isOwner ? `
             <div style="position:absolute; bottom:12px; right:12px; display:flex; gap:5px;">
                 ${isVIP 
-                    ? `<button onclick="event.stopPropagation(); removeListingVIP(${item.id});" class="btn-secondary" style="padding:5px 10px; font-size:12px; background:#f59e0b;">⭐ VIP</button>`
-                    : `<button onclick="event.stopPropagation(); makeListingVIP(${item.id});" class="btn-secondary" style="padding:5px 10px; font-size:12px; background:#eab308; color:black;">Сделать VIP</button>`
+                    ? `<button onclick="event.stopPropagation(); removeListingVIP('${item.id}');" class="btn-secondary" style="padding:5px 10px; font-size:12px; background:#f59e0b;">⭐ VIP</button>`
+                    : `<button onclick="event.stopPropagation(); makeListingVIP('${item.id}');" class="btn-secondary" style="padding:5px 10px; font-size:12px; background:#eab308; color:black;">Сделать VIP</button>`
                 }
-                <button onclick="event.stopPropagation(); openEditModal(${item.id});" class="btn-secondary" style="padding:5px 10px; font-size:12px;">✏️</button>
-                <button onclick="event.stopPropagation(); deleteListing(${item.id});" class="btn-danger" style="padding:5px 10px; font-size:12px;">🗑</button>
+                <button onclick="event.stopPropagation(); openEditModal('${item.id}');" class="btn-secondary" style="padding:5px 10px; font-size:12px;">✏️</button>
+                <button onclick="event.stopPropagation(); deleteListing('${item.id}');" class="btn-danger" style="padding:5px 10px; font-size:12px;">🗑</button>
             </div>` : hasChat ? `
             <div style="position:absolute; bottom:12px; right:12px;">
-                <button onclick="event.stopPropagation(); openChatModal(${item.id}, '${item.author}');" 
+                <button onclick="event.stopPropagation(); openChatModal('${item.id}', '${item.author}');" 
                         class="btn-secondary" style="padding:8px 14px; font-size:12px;">💬 Чат</button>
             </div>` : ''}
         </div>
@@ -3484,7 +3484,7 @@ function openChatModal(listingId, sellerName) {
                 <input type="text" id="chatMessageInput" placeholder="Введите сообщение..." 
                        onkeypress="if(event.key==='Enter') sendChatMessageFromInput(${listingId}, '${sellerName}')"
                        style="flex:1; padding:12px 16px; border:2px solid var(--border); border-radius:12px; font-size:15px;">
-                <button onclick="sendChatMessageFromInput(${listingId}, '${sellerName}')" 
+                <button onclick="sendChatMessageFromInput('${listingId}', '${sellerName}')" 
                         class="btn-primary" style="padding:12px 24px;">
                     <i class="fas fa-paper-plane"></i>
                 </button>
@@ -3557,7 +3557,7 @@ function sendChatMessageFromInput(listingId, sellerName) {
 function renderChatButton(listingId, sellerName) {
     const unread = getUnreadCount(currentUser);
     return `
-        <button onclick="openChatModal(${listingId}, '${sellerName}')" 
+        <button onclick="openChatModal('${listingId}', '${sellerName}')" 
                 class="btn-secondary" style="flex:1; padding:10px; font-size:13px;">
             💬 Чат ${unread > 0 ? `(${unread})` : ''}
         </button>
