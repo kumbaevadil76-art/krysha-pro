@@ -213,8 +213,139 @@ let plusExpiryDate = localStorage.getItem('krysha_plus_expiry')
     ? new Date(localStorage.getItem('krysha_plus_expiry')) 
     : null;
 
-// ====================== FIREBASE SYNC ======================
+// ====================== ЧАТ В РЕАЛЬНОМ ВРЕМЕНИ ======================
+
+// Загрузка сообщений чата из Firebase
+async function loadChatsFromFirebase() {
+    if (!db) return;
+    
+    try {
+        const snapshot = await db.collection("chats").orderBy("timestamp", "asc").get();
+        chatMessages = [];
+        snapshot.forEach((doc) => {
+            chatMessages.push({ id: doc.id, ...doc.data() });
+        });
+        console.log(`✅ Загружено ${chatMessages.length} сообщений чата из Firebase`);
+    } catch (error) {
+        console.error("Ошибка загрузки чатов из Firebase:", error);
+    }
+}
+
+// Real-time синхронизация чата
+function enableChatRealtimeSync() {
+    if (!db) return;
+    
+    if (unsubscribeChats) {
+        unsubscribeChats();
+    }
+    
+    // Подписываемся на все сообщения чатов
+    unsubscribeChats = db.collection("chats")
+        .orderBy("timestamp", "asc")
+        .onSnapshot((snapshot) => {
+            // Сохраняем текущую позицию скролла если чат открыт
+            const container = document.getElementById('chatMessagesContainer');
+            const wasAtBottom = container && (container.scrollHeight - container.scrollTop - container.clientHeight < 100);
+            
+            // Обновляем локальный массив
+            const newMessages = [];
+            snapshot.forEach((doc) => {
+                newMessages.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Проверяем, изменились ли сообщения
+            const oldIds = chatMessages.map(m => m.id);
+            const newIds = newMessages.map(m => m.id);
+            const hasChanged = oldIds.length !== newIds.length || 
+                              !oldIds.every((id, i) => id === newIds[i]);
+            
+            if (hasChanged) {
+                chatMessages = newMessages;
+                console.log(`🔄 Чат синхронизирован: ${chatMessages.length} сообщений`);
+                
+                // Обновляем открытое окно чата
+                const chatModal = document.getElementById('chatModal');
+                if (chatModal && chatModal.style.display === 'flex') {
+                    const container = document.getElementById('chatMessagesContainer');
+                    if (container) {
+                        container.innerHTML = renderChatMessagesForContainer();
+                        if (wasAtBottom || chatMessages.length <= 5) {
+                            container.scrollTop = container.scrollHeight;
+                        }
+                    }
+                }
+            }
+        }, (error) => {
+            console.error("Ошибка real-time синхронизации чата:", error);
+        });
+}
+    
+// Рендер сообщений для обновления открытого чата
+function renderChatMessagesForContainer() {
+    const container = document.getElementById('chatMessagesContainer');
+    if (!container) return '';
+    
+    const listingId = parseInt(container.dataset.listingId);
+    if (!listingId) return '';
+    
+    const item = items.find(i => i.id === listingId);
+    if (!item) return '';
+    
+    const messages = getChatMessages(listingId);
+    
+    if (messages.length === 0) {
+        return `<p style="text-align:center; color:var(--text-light); padding:40px 20px;">
+            💬 Начните диалог с продавцом
+        </p>`;
+    }
+    
+    return messages.map(msg => {
+        const isMyMessage = msg.from === currentUser;
+        let timestamp = msg.timestamp;
+        if (timestamp && timestamp.toDate) {
+            timestamp = timestamp.toDate();
+        }
+        const time = new Date(timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        
+        return `
+            <div style="margin-bottom:12px; ${isMyMessage ? 'text-align:right;' : ''}">
+                <div style="display:inline-block; max-width:75%; padding:10px 14px; border-radius:16px; 
+                            ${isMyMessage 
+                                ? 'background:linear-gradient(135deg, #6366f1, #4f46e5); color:white;' 
+                                : 'background:var(--card-bg); border:1px solid var(--border);'}">
+                    <p style="margin:0; word-wrap:break-word;">${msg.message}</p>
+                    <small style="opacity:0.7; font-size:11px; display:block; margin-top:5px;">
+                        ${time} ${msg.read && isMyMessage ? '✓' : ''}
+                    </small>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+    return messages.map(msg => {
+        const isMyMessage = msg.from === currentUser;
+        const time = new Date(msg.timestamp?.toDate ? msg.timestamp.toDate() : msg.timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        
+        return `
+            <div style="margin-bottom:12px; ${isMyMessage ? 'text-align:right;' : ''}">
+                <div style="display:inline-block; max-width:75%; padding:10px 14px; border-radius:16px; 
+                            ${isMyMessage 
+                                ? 'background:linear-gradient(135deg, #6366f1, #4f46e5); color:white;' 
+                                : 'background:var(--card-bg); border:1px solid var(--border);'}">
+                    <p style="margin:0; word-wrap:break-word;">${msg.message}</p>
+                    <small style="opacity:0.7; font-size:11px; display:block; margin-top:5px;">
+                        ${time} ${msg.read && isMyMessage ? '✓' : ''}
+                    </small>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+            
+// ====================== ОСНОВНОЙ FIREBASE SYNC ======================
 let unsubscribeListings = null;
+let unsubscribeChats = null;
 
 // Загрузка объявлений из Firebase
 async function loadListingsFromFirebase() {
@@ -238,7 +369,7 @@ async function loadListingsFromFirebase() {
         showToast("Ошибка загрузки данных", "error");
     }
 }
-
+    
 // Real-time синхронизация
 function enableRealtimeSync() {
     if (!db) return;
@@ -3161,7 +3292,7 @@ function getChatId(listingId) {
 }
 
 // Отправка сообщения
-function sendChatMessage(listingId, recipient, message) {
+async function sendChatMessage(listingId, recipient, message) {
     if (!currentUser) {
         showToast("⚠️ Войдите в аккаунт для отправки сообщений", "error");
         openModal('authModal');
@@ -3184,19 +3315,42 @@ function sendChatMessage(listingId, recipient, message) {
         return false;
     }
     
-    const chatMessage = {
-        id: Date.now(),
+    const chatData = {
         chatId: getChatId(listingId),
         listingId,
         from: currentUser,
         to: recipient,
         message: sanitizeHTML(message.trim()),
-        timestamp: new Date().toISOString(),
-        read: false
+        read: false,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
     };
     
-    chatMessages.push(chatMessage);
-    localStorage.setItem('krysha_chats', JSON.stringify(chatMessages));
+    // Сохраняем в Firebase для real-time синхронизации
+    if (db) {
+        try {
+            await db.collection("chats").add(chatData);
+            console.log("✅ Сообщение отправлено в Firebase");
+        } catch (error) {
+            console.error("Ошибка отправки сообщения в Firebase:", error);
+            showToast("Ошибка отправки сообщения", "error");
+            return false;
+        }
+    } else {
+        // Fallback на localStorage если Firebase недоступен
+        const chatMessage = {
+            id: Date.now(),
+            chatId: getChatId(listingId),
+            listingId,
+            from: currentUser,
+            to: recipient,
+            message: sanitizeHTML(message.trim()),
+            timestamp: new Date().toISOString(),
+            read: false
+        };
+        
+        chatMessages.push(chatMessage);
+        localStorage.setItem('krysha_chats', JSON.stringify(chatMessages));
+    }
     
     logAction('send_message', `To: ${recipient}, Listing: ${listingId}`);
     
@@ -3212,16 +3366,39 @@ function getChatMessages(listingId) {
 }
 
 // Пометить сообщения как прочитанные
-function markMessagesAsRead(listingId, username) {
+async function markMessagesAsRead(listingId, username) {
+    const chatId = getChatId(listingId);
     let changed = false;
+    
+    // Обновляем локально
     chatMessages.forEach(msg => {
-        if (msg.chatId === getChatId(listingId) && msg.to === username && !msg.read) {
+        if (msg.chatId === chatId && msg.to === username && !msg.read) {
             msg.read = true;
             changed = true;
         }
     });
     
-    if (changed) {
+    // Обновляем в Firebase
+    if (db && changed) {
+        try {
+            const snapshot = await db.collection("chats")
+                .where("chatId", "==", chatId)
+                .where("to", "==", username)
+                .where("read", "==", false)
+                .get();
+            
+            const batch = db.batch();
+            snapshot.forEach((doc) => {
+                batch.update(doc.ref, { read: true });
+            });
+            await batch.commit();
+            console.log(`✅ Сообщения помечены как прочитанные в Firebase`);
+        } catch (error) {
+            console.error("Ошибка при пометке сообщений как прочитанных:", error);
+        }
+    }
+    
+    if (changed && !db) {
         localStorage.setItem('krysha_chats', JSON.stringify(chatMessages));
     }
 }
@@ -3260,7 +3437,7 @@ function openChatModal(listingId, sellerName) {
                 <button onclick="closeModal('chatModal')" style="background:none; border:none; font-size:24px; cursor:pointer; color:var(--text-light);">&times;</button>
             </div>
             
-            <div id="chatMessagesContainer" style="flex:1; overflow-y:auto; padding:15px; background:#f8fafc;">
+            <div id="chatMessagesContainer" data-listing-id="${listingId}" style="flex:1; overflow-y:auto; padding:15px; background:#f8fafc;">
                 ${renderChatMessages(listingId)}
             </div>
             
@@ -3292,13 +3469,17 @@ function renderChatMessages(listingId) {
     
     if (messages.length === 0) {
         return `<p style="text-align:center; color:var(--text-light); padding:40px 20px;">
-            💬 Начните диалог с продавцом<br><small>Сообщения сохраняются только в этом браузере</small>
+            💬 Начните диалог с продавцом<br><small>Сообщения синхронизируются в реальном времени</small>
         </p>`;
     }
     
     return messages.map(msg => {
         const isMyMessage = msg.from === currentUser;
-        const time = new Date(msg.timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        let timestamp = msg.timestamp;
+        if (timestamp && timestamp.toDate) {
+            timestamp = timestamp.toDate();
+        }
+        const time = new Date(timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
         
         return `
             <div style="margin-bottom:12px; ${isMyMessage ? 'text-align:right;' : ''}">
@@ -3323,11 +3504,13 @@ function sendChatMessageFromInput(listingId, sellerName) {
     
     if (sendChatMessage(listingId, sellerName, message)) {
         input.value = '';
-        document.getElementById('chatMessagesContainer').innerHTML = renderChatMessages(listingId);
         
-        // Прокрутка вниз
-        const container = document.getElementById('chatMessagesContainer');
-        if (container) container.scrollTop = container.scrollHeight;
+        // Real-time listener обновит сообщения автоматически
+        // Просто прокручиваем вниз
+        setTimeout(() => {
+            const container = document.getElementById('chatMessagesContainer');
+            if (container) container.scrollTop = container.scrollHeight;
+        }, 100);
     }
 }
 
@@ -3462,7 +3645,9 @@ window.onload = async () => {
     if (typeof db !== 'undefined') {
         console.log('✅ Firebase готов к работе');
         await loadListingsFromFirebase();
+        await loadChatsFromFirebase();
         enableRealtimeSync();
+        enableChatRealtimeSync();
     } else {
         console.log('⚠️ Firebase не инициализирован, используем локальные данные');
         // Загружаем из localStorage если Firebase недоступен
