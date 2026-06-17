@@ -2546,7 +2546,7 @@ function openDetail(id) {
         `
         : '<p style="color:#64748b; text-align:center; padding:60px 20px; background:#f8fafc; border-radius:16px;">📷 Нет фотографий</p>';
 
-    const isOwner = currentUser && (item.author === currentUser || currentUser === 'admin');
+    const isOwner = typeof currentUser !== 'undefined' && currentUser && (item.author === currentUser || currentUser === 'admin');
     
     const html = `
         ${imagesHtml}
@@ -2857,7 +2857,7 @@ function renderViewedHistory() {
 
 function createCardHTML(item, dateStr = '') {
     const typeLabel = item.type === 'rent' ? 'Аренда' : 'Продажа';
-    const isOwner = currentUser && (item.author === currentUser || currentUser === 'admin');
+    const isOwner = typeof currentUser !== 'undefined' && currentUser && (item.author === currentUser || currentUser === 'admin');
     const isVIP = item.isVIP && item.vipUntil && new Date(item.vipUntil) > new Date();
     const hasChat = currentUser && currentUser !== item.author;
     
